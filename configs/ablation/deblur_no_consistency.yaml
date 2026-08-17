@@ -1,0 +1,5 @@
+# Ablation: reconstruction term only (omega = 0).
+_base_: ../deblur_div2k.yaml
+exp_name: deblur_div2k_omega0
+bridge:
+  omega: 0.0

@@ -1,0 +1,6 @@
+# Ablation: bridge parameterised as A y + b only.
+_base_: ../deblur_div2k.yaml
+exp_name: deblur_div2k_linear
+bridge:
+  param_type: linear
+  linear_ratio: 1.0

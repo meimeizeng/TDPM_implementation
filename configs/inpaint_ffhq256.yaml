@@ -1,0 +1,91 @@
+# Box inpainting on FFHQ-256.
+task: inpaint
+exp_name: inpaint_ffhq256
+output_dir: runs
+
+runtime:
+  device: cuda
+  seed: 42
+  amp: none
+  num_workers: 4
+
+data:
+  root: data/ffhq-256       # folder containing data/*.parquet
+  image_size: 256
+  mask_min_size: 32
+  mask_max_size: 128
+  batch_size: 8
+  val_batch_size: 4
+  val_ratio: 0.02
+
+inpaint:
+  repaint: true             # re-inject the observed pixels at every reverse step
+
+model:
+  base_channels: 64
+  channel_mult: [1, 2, 4, 8]
+  num_res_blocks: 2
+  attn_resolutions: [16]
+  dropout: 0.0
+
+diffusion:
+  num_timesteps: 2000
+  schedule: linear
+  pred_type: eps
+  zero_terminal_snr: false
+  beta_scale_by_steps: false
+  snr_gamma: 0.0
+
+backbone:
+  train_steps: 500000
+  lr: 1.0e-4
+  min_lr: 1.0e-6
+  warmup_steps: 2000
+  grad_clip: 1.0
+  accum_steps: 1
+  ema_decay: 0.9999
+  region_weight: 3.0        # extra weight on the missing box
+  log_every: 500
+  save_every: 5000
+  vis_every: 5000
+  vis_steps: 50
+  vis_num: 4
+  keep_last: 3
+  resume: auto
+  init_from: null
+
+truncation:
+  t_star: 600               # alpha_bar = 0.156 under this schedule
+  num_steps: 10
+
+bridge:
+  param_type: hybrid
+  rank: 256
+  work_size: 64
+  base_channels: 48
+  target: mean
+  rec_loss: smooth_l1
+  con_loss: l2
+  huber_beta: 1.0
+  omega: 0.5
+  region_weight: 3.0
+  train_steps: 60000
+  linear_ratio: 0.25
+  lr: 1.0e-4
+  min_lr: 1.0e-6
+  warmup_steps: 1000
+  grad_clip: 1.0
+  ema_decay: 0.999
+  log_every: 100
+  save_every: 2000
+  vis_every: 2000
+  vis_num: 4
+  keep_last: 3
+  resume: auto
+  backbone_ckpt: null
+
+eval:
+  methods: [ddim100, ddim50, dpm20, tdpm]
+  num_images: 16
+  lpips_net: alex
+  ddim_eta: 0.0

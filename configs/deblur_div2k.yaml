@@ -1,0 +1,98 @@
+# Gaussian deblurring on DIV2K, 256x256 patches.
+task: deblur
+exp_name: deblur_div2k
+output_dir: runs
+
+runtime:
+  device: cuda
+  seed: 42
+  amp: none            # none | fp16 | bf16
+  num_workers: 6
+
+data:
+  root: data/DIV2K
+  train_root: data/DIV2K/DIV2K_train_HR
+  val_root: data/DIV2K/DIV2K_valid_HR
+  patch_size: 256
+  sigma_low: 2.5
+  sigma_high: 10.0
+  noise_std: 0.05           # defined on the [0,1] scale
+  batch_size: 4
+  val_batch_size: 4
+  repeat: 20                # crops drawn per image and epoch
+  num_val_images: 16
+  condition_on_adjoint: true    # concatenate A^T y to the observation
+  condition_on_kernel: true     # non-blind: encode the kernel into the embedding
+  normalize_kernel: false       # set true if benchmark kernels use a different scale
+
+model:
+  base_channels: 64
+  channel_mult: [1, 2, 4, 8]
+  num_res_blocks: 2
+  attn_resolutions: [16, 32]
+  dropout: 0.0
+
+diffusion:
+  num_timesteps: 1000
+  schedule: linear          # linear | cosine
+  pred_type: v              # eps | x0 | v
+  zero_terminal_snr: true
+  beta_scale_by_steps: true
+  snr_gamma: 0.0            # >0 enables Min-SNR-gamma weighting
+
+# ---------------------------------------------------------------- stage 1
+backbone:
+  train_steps: 400000
+  lr: 1.0e-4
+  min_lr: 1.0e-6
+  warmup_steps: 2000
+  grad_clip: 1.0
+  accum_steps: 1
+  ema_decay: 0.9999
+  region_weight: 1.0
+  log_every: 100
+  save_every: 5000
+  vis_every: 5000
+  vis_steps: 50
+  vis_num: 4
+  keep_last: 3
+  resume: auto              # auto | none | <path>
+  init_from: null
+
+# ---------------------------------------------------------------- truncation
+truncation:
+  t_star: 400               # choose inside the admissible region (see docs)
+  num_steps: 10             # reverse steps from t* to 0
+
+# ---------------------------------------------------------------- stage 2
+bridge:
+  param_type: hybrid        # linear (Ay+b) | nonlinear (f(y)) | hybrid (Ay+b+f(y))
+  rank: 256
+  work_size: 64             # resolution at which A = U V^T is applied
+  base_channels: 48
+  target: mean              # regress E[x_t* | x_0]; noise is added when sampling
+  rec_loss: smooth_l1
+  con_loss: l2
+  huber_beta: 1.0
+  omega: 0.5                # weight of the consistency term
+  region_weight: 1.0
+  train_steps: 60000
+  linear_ratio: 0.4         # fraction of steps spent on A y + b before freezing it
+  lr: 1.0e-4
+  min_lr: 1.0e-6
+  warmup_steps: 1000
+  grad_clip: 1.0
+  ema_decay: 0.999
+  log_every: 100
+  save_every: 2000
+  vis_every: 2000
+  vis_num: 4
+  keep_last: 3
+  resume: auto
+  backbone_ckpt: null       # defaults to runs/<exp_name>/checkpoints/backbone_latest.pth
+
+eval:
+  methods: [ddim50, dpm20, tdpm]
+  num_images: 16
+  lpips_net: alex
+  ddim_eta: 0.0
